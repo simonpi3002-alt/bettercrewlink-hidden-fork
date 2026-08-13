@@ -9,8 +9,7 @@ import { format as formatUrl } from 'url';
 import './hook';
 import { overlayWindow } from 'electron-overlay-window';
 import { initializeIpcHandlers, initializeIpcListeners } from './ipc-handlers';
-import { IpcRendererMessages, IpcHandlerMessages } from '../common/ipc-messages';
-import { ProgressInfo, UpdateInfo } from 'builder-util-runtime';
+import { IpcHandlerMessages } from '../common/ipc-messages';
 import { protocol } from 'electron';
 import Store from 'electron-store';
 import { ISettings } from '../common/ISettings';
@@ -228,41 +227,17 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
 	app.quit();
 } else {
-	autoUpdater.autoDownload = false;
-	autoUpdater.checkForUpdates();
-	autoUpdater.on('update-available', (info: UpdateInfo) => {
-		try {
-			global.mainWindow?.webContents.send(IpcRendererMessages.AUTO_UPDATER_STATE, {
-				state: 'available',
-				info: info,
-			});
-		} catch (e) {
-			/* Empty block */
-		}
-	});
-	autoUpdater.on('error', (err: string) => {
-		try {
-			global.mainWindow?.webContents.send(IpcRendererMessages.AUTO_UPDATER_STATE, {
-				state: 'error',
-				error: err,
-			});
-		} catch (e) {
-			/*empty*/
-		}
-	});
-	autoUpdater.on('download-progress', (progress: ProgressInfo) => {
-		try {
-			global.mainWindow?.webContents.send(IpcRendererMessages.AUTO_UPDATER_STATE, {
-				state: 'downloading',
-				progress,
-			});
-		} catch (e) {
-			/*empty*/
-		}
-	});
-	autoUpdater.on('update-downloaded', () => {
-		autoUpdater.quitAndInstall();
-	});
+	// Simon's Among Us Stage 5: this fork's own auto-updater is disabled
+	// entirely, deliberately. Updates go through the Simon's Among Us
+	// Launcher's own install/update flow (the same one already used for
+	// Core/ATR/BepInEx) rather than a background process that -- for the
+	// unmodified upstream binary -- would silently install a new build
+	// from OhMyGuus/BetterCrewLink's own release feed and revert this
+	// patch (see BETTERCREWLINK_STAGE1_4_EXPERIMENT_FINDINGS.md Stage 4 in
+	// the Simon's Among Us repository for the empirical finding this
+	// answers). No checkForUpdates(), no update-available/download-
+	// progress/update-downloaded wiring, no quitAndInstall() anywhere in
+	// this fork.
 
 	// quit application when all windows are closed
 	app.on('window-all-closed', () => {
@@ -350,7 +325,10 @@ if (!gotTheLock) {
 	});
 
 	ipcMain.on('update-app', () => {
-		autoUpdater.downloadUpdate();
+		// Auto-update is disabled in this fork -- see the comment above
+		// gotTheLock. Intentionally a no-op, not removed outright, so a
+		// renderer still wired to send this message does nothing rather
+		// than throwing.
 	});
 
 	ipcMain.on(IpcHandlerMessages.OPEN_LOBBYBROWSER, () => {
