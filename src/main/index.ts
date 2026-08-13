@@ -64,6 +64,11 @@ function createMainWindow() {
 		frame: false,
 		fullscreenable: false,
 		maximizable: false,
+		// Simon's Among Us Stage 1 experiment: never show the main control
+		// window. Electron's show:false is already used in this codebase for
+		// the overlay window (see createOverlay() below) -- this is the first
+		// time it's applied to the main window.
+		show: false,
 		webPreferences: {
 			nodeIntegration: true,
 			contextIsolation: false
@@ -260,6 +265,20 @@ if (!gotTheLock) {
 
 	// quit application when all windows are closed
 	app.on('window-all-closed', () => {
+		// Simon's Among Us Stage 1 experiment: the main window is now
+		// show:false and never explicitly closed in normal operation, so this
+		// event should only genuinely mean "all windows closed" if the main
+		// window itself is actually gone (destroyed), not just because some
+		// other, ancillary window (e.g. the lobby browser) was closed while
+		// the hidden main window -- and the live voice connection running in
+		// its renderer -- is still alive. Unresolved question from the
+        // architecture study this answers: yes, a still-open (even if
+        // hidden) BrowserWindow keeps window-all-closed from firing at all
+        // when other closable windows exist; this guard only matters for the
+        // case where something closes the main window directly.
+		if (global.mainWindow && !global.mainWindow.isDestroyed()) {
+			return;
+		}
 		// on macOS it is common for applications to stay open until the user explicitly quits
 		try {
 			const mainWindow = global.mainWindow;
