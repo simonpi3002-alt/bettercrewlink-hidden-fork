@@ -18,7 +18,13 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    # Pinned to the windows-2022 image, not windows-latest: windows-latest's
+    # current image additionally carries a Visual Studio "18" (2026 preview)
+    # install alongside VS2022, and node-gyp -- even at the 11.x version that
+    # otherwise works on this runner family -- fails to parse that version
+    # string ("unknown version \"undefined\"") and refuses to build native
+    # modules at all. windows-2022 has a single, unambiguous VS2022 install.
+    runs-on: windows-2022
 
     steps:
       - name: Check out Git repository
