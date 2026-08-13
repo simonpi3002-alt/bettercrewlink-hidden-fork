@@ -86,7 +86,13 @@ jobs:
             '};'
           )
           Set-Content -Path $shimPath -Value $shimLines -Encoding UTF8
-          echo "NODE_OPTIONS_MAXBUFFER_SHIM=--require `"$shimPath`"" >> $env:GITHUB_ENV
+          # Forward slashes deliberately: NODE_OPTIONS's own tokenizer
+          # treats backslashes inside a quoted value as escape characters
+          # and strips them (confirmed: "D:\a\_temp\x.js" arrived at Node as
+          # "D:a_tempx.js"). Windows and Node both accept forward slashes in
+          # paths, so this sidesteps the parsing issue entirely.
+          $shimPathForward = $shimPath -replace '\\', '/'
+          echo "NODE_OPTIONS_MAXBUFFER_SHIM=--require `"$shimPathForward`"" >> $env:GITHUB_ENV
 
       - name: Install Dependencies
         # webpack 4's internal content-hashing still requests the "md4"
