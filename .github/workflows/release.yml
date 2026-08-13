@@ -25,15 +25,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Node.js, NPM and Yarn
-        # This project originally targeted Node 16.14.2. Bumped to 18 for
-        # the build toolchain only -- see the node-gyp step below for why.
-        # Electron 11's own runtime (what the shipped app actually executes
-        # under) is unaffected; node-gyp cross-compiles native modules
-        # against Electron's own ABI regardless of the Node version running
-        # the build.
+        # This project originally targeted Node 16.14.2. Bumped to 20 (LTS)
+        # for the build toolchain only -- see the node-gyp step below for
+        # why (current node-gyp's bundled undici needs both the
+        # ReadableStream and File globals, added in Node 18 and 20
+        # respectively). Electron 11's own runtime (what the shipped app
+        # actually executes under) is unaffected; node-gyp cross-compiles
+        # native modules against Electron's own ABI regardless of the Node
+        # version running the build.
         uses: actions/setup-node@v3
         with:
-          node-version: 18.20.4
+          node-version: 20.18.1
 
       - name: Update node-gyp for the runner's Visual Studio version
         # The node-gyp bundled with npm doesn't recognize this runner's
