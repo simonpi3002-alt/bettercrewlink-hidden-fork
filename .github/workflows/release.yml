@@ -41,14 +41,17 @@ jobs:
         # The node-gyp bundled with npm doesn't recognize this runner's
         # installed Visual Studio version and fails every native module
         # build with "could not find a version of Visual Studio 2017 or
-        # newer to use" even though a working toolchain is present. A
-        # current node-gyp does recognize it -- but current node-gyp also
-        # needs Node 18+'s global ReadableStream (its bundled `undici` HTTP
-        # client requires it), which is why Node was bumped above from this
-        # project's original 16.14.2 pin.
+        # newer to use" even though a working toolchain is present. Pinned
+        # to major version 11 deliberately, not "@latest": 8.x/10.x (the
+        # bundled version, and this project's own dev-machine default) don't
+        # recognize this VS version at all; 13.x's bundled `undici` needs
+        # newer Node internals (markAsUncloneable) than even Node 20 LTS
+        # ships. 11.x is the version that actually works against both this
+        # runner's VS install and Node 20 LTS, found by testing the
+        # available range end to end -- not a guess.
         shell: pwsh
         run: |
-          npm install -g node-gyp@latest
+          npm install -g node-gyp@11
           # npm_config_node_gyp must point at the actual JS entry point --
           # `Get-Command node-gyp`'s .Source resolves to the PowerShell (.ps1)
           # shim on this runner, which node-gyp's callers invoke directly via
