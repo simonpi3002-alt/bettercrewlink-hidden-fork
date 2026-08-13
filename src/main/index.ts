@@ -17,6 +17,7 @@ import { ISettings } from '../common/ISettings';
 import installExtension, { REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 import { gameReader } from './hook';
 import { GenerateHat } from './avatarGenerator';
+import { startControlBridge } from './controlBridge';
 const args = require('minimist')(process.argv); // eslint-disable-line
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const devTools = (isDevelopment || args.dev === 1) && true;
@@ -332,6 +333,7 @@ if (!gotTheLock) {
 		initializeIpcListeners();
 		initializeIpcHandlers();
 		global.mainWindow = createMainWindow();
+		startControlBridge();
 
 		if (isDevelopment)
 			installExtension(REACT_DEVELOPER_TOOLS)
