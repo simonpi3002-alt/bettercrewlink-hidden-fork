@@ -61,6 +61,33 @@ jobs:
           $nodeGyp = Join-Path $globalRoot 'node-gyp\bin\node-gyp.js'
           echo "npm_config_node_gyp=$nodeGyp" >> $env:GITHUB_ENV
 
+      - name: Patch child_process.execFile's default maxBuffer
+        # node-gyp's own Visual Studio detection (execFile'ing a PowerShell
+        # query against this runner's real, multi-instance VS install) can
+        # exceed Node's default 1MB execFile maxBuffer, surfacing as
+        # "RangeError [ERR_CHILD_PROCESS_STDIO_MAXBUFFER_EXCEEDED]" deep in
+        # node-gyp's stack -- reproduced twice, not flaky. Rather than patch
+        # node-gyp's own source (fragile across its version bumps), this
+        # monkey-patches execFile process-wide to a much larger default
+        # before anything else runs, via NODE_OPTIONS --require below.
+        shell: pwsh
+        run: |
+          $shimPath = Join-Path $env:RUNNER_TEMP 'large-maxbuffer-shim.js'
+          $shimLines = @(
+            'const cp = require("child_process");',
+            'const originalExecFile = cp.execFile;',
+            'cp.execFile = function (file, args, options, callback) {',
+            '  if (typeof options === "function") {',
+            '    callback = options;',
+            '    options = {};',
+            '  }',
+            '  options = Object.assign({ maxBuffer: 200 * 1024 * 1024 }, options || {});',
+            '  return originalExecFile.call(this, file, args, options, callback);',
+            '};'
+          )
+          Set-Content -Path $shimPath -Value $shimLines -Encoding UTF8
+          echo "NODE_OPTIONS_MAXBUFFER_SHIM=--require `"$shimPath`"" >> $env:GITHUB_ENV
+
       - name: Install Dependencies
         # webpack 4's internal content-hashing still requests the "md4"
         # digest, which OpenSSL 3 (Node 17+) no longer supports by default.
@@ -70,14 +97,15 @@ jobs:
         # security restriction on its bundled Node), but nothing in this
         # step or the next one actually launches the Electron app itself,
         # only tooling that builds it.
+        shell: pwsh
         run: yarn install --cache-folder .yarn --network-timeout 100000
         env:
-          NODE_OPTIONS: --openssl-legacy-provider
+          NODE_OPTIONS: --openssl-legacy-provider ${{ env.NODE_OPTIONS_MAXBUFFER_SHIM }}
 
       - name: Build App
         run: yarn run publish
         env:
-          NODE_OPTIONS: --openssl-legacy-provider
+          NODE_OPTIONS: --openssl-legacy-provider ${{ env.NODE_OPTIONS_MAXBUFFER_SHIM }}
           # The repo-scoped, ephemeral token GitHub Actions provides
           # automatically -- no manually-created/stored PAT needed. Requires
           # the contents: write permission granted above.
