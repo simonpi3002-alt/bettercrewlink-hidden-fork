@@ -1,6 +1,6 @@
 appId: net.ottomated.crewlink.beta
 productName: Better-CrewLink
-copyright: Copyright © 2021 OhMyGuus
+copyright: Copyright © 2021 OhMyGuus. Modified 2026 by Simon (window-hiding + local control bridge patch, GPLv3-compatible; full source published alongside this release).
 directories:
   output: dist
   buildResources: resources
@@ -12,9 +12,13 @@ files:
 
 win:
   publish:
-    - github
+    - provider: github
+      owner: simonpi3002-alt
+      repo: bettercrewlink-hidden-fork
 linux:
   target:
     - "AppImage"
   publish:
-    - github
+    - provider: github
+      owner: simonpi3002-alt
+      repo: bettercrewlink-hidden-fork

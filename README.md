@@ -1,4 +1,53 @@
+# This is a fork
+
+This is a personal, minimally-patched fork of
+[OhMyGuus/BetterCrewLink](https://github.com/OhMyGuus/BetterCrewLink)
+(pinned at commit
+[`403dd4f`](https://github.com/OhMyGuus/BetterCrewLink/commit/403dd4f0b5fd0d232358731da9821e7b004187c5),
+release `v3.1.4`), built for use with the
+[Simon's Among Us](https://github.com/) launcher/modpack. It is **not
+affiliated with, endorsed by, or linked from the main Simon's Among Us
+project repository** -- it's a separate, standalone, publicly-published
+GPLv3 fork, exactly as GPLv3 §5/§6 require for a distributed modified
+binary.
+
+## What's changed from upstream
+
+Three changes, all in `src/main/index.ts` plus one new file
+(`src/main/controlBridge.ts`). No changes anywhere else, including
+`src/renderer/` (the actual voice/WebRTC engine is completely untouched).
+
+1. **The main control window never shows.** `show: false` added to its
+   `BrowserWindow` options -- the exact same mechanism this codebase's own
+   in-game overlay window already used successfully, just never applied to
+   the main window before. A `window-all-closed` guard keeps the app (and
+   any live voice connection) alive if some other window closes while the
+   hidden main window is still open.
+2. **A minimal local control bridge.** A loopback-only (`127.0.0.1`, never
+   externally reachable) WebSocket server, started alongside the main
+   window, exposing a narrow, primitive command/state schema so an external
+   process (the Simon's Among Us Launcher, and eventually an in-game
+   overlay) can read connection/mute/speaking state and send mute/deafen/
+   device-selection commands -- without linking against this app's code.
+3. **Auto-update is disabled entirely.** No `checkForUpdates()`, no
+   `update-available`/`download-progress`/`update-downloaded` wiring, no
+   `quitAndInstall()`. Updates to this fork are distributed through the
+   Simon's Among Us Launcher's own install/update flow instead of a
+   background process that would otherwise silently fetch and install
+   whatever the *unmodified* upstream project publishes to its own GitHub
+   releases -- reverting this patch with no warning.
+
+## License
+
+GPLv3 (`GPL-3.0-or-later`), same as upstream -- see `LICENSE`. This fork's
+complete corresponding source is this repository, in full, satisfying
+GPLv3 §6.
+
+---
+
 > ## ⚠️ WARNING:
+> The README below this point is upstream's own, unmodified, and describes
+> the original BetterCrewLink project -- it is not specific to this fork.
 > The README is outdated meaning some information contained here is not updated, the same thing goes for the [Wiki](https://github.com/OhMyGuus/BetterCrewLink/wiki).
 >
 > This is happening because we are planning making some huge rework on the README, so be careful with some informations when reading, maybe they are outdated.

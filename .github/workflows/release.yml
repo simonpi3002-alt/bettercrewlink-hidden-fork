@@ -1,20 +1,24 @@
-name: Release 
+name: Release
 
+# Simon's Among Us fork: triggers on a pushed version tag (v*) so the
+# Launcher's install/update flow has a predictable, repeatable release
+# process to follow -- the same pattern already used for Core/ATR/BepInEx --
+# in addition to the original manual workflow_dispatch trigger. Windows-only:
+# this fork exists for the Simon's Among Us Launcher, which only targets
+# Windows; the upstream Linux build target was dropped as unneeded CI cost,
+# not because anything in the patch is Windows-specific.
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-         - os: windows-latest
-           dist: 'publish'
-           installer: 'dist/Better-CrewLink Setup*.exe'
-         - os: ubuntu-latest
-           dist: 'publish:linux'
-           installer: 'dist/Better-CrewLink-*.AppImage'
+    runs-on: windows-latest
 
     steps:
       - name: Check out Git repository
@@ -25,37 +29,32 @@ jobs:
         with:
           node-version: 16.14.2
 
-      - name: Install Linux dependencies
-        if: ${{ matrix.os == 'ubuntu-latest' }}
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxcb1-dev libx11-dev
-    
       - name: Install Dependencies
         run: yarn install --cache-folder .yarn --network-timeout 100000
-        
+
       - name: Build App
-        run: yarn run ${{ matrix.dist }}
+        run: yarn run publish
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          # The repo-scoped, ephemeral token GitHub Actions provides
+          # automatically -- no manually-created/stored PAT needed. Requires
+          # the contents: write permission granted above.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload Installer
         uses: actions/upload-artifact@v4
         with:
           name: BetterCrewLink Installer ${{ runner.os }}
-          path: ${{ matrix.installer }}
+          path: 'dist/Better-CrewLink Setup*.exe'
           if-no-files-found: error
-          
+
       - name: Upload Unpacked 64bit
         uses: actions/upload-artifact@v4
-        if: ${{ matrix.os == 'windows-latest' }}
         with:
-          name: BetterCrewLink Unpacked 64bit 
+          name: BetterCrewLink Unpacked 64bit
           path: 'dist/win-unpacked'
-          
+
       - name: Upload Unpacked 32bit
         uses: actions/upload-artifact@v4
-        if: ${{ matrix.os == 'windows-latest' }}
         with:
-          name: BetterCrewLink Unpacked 32bit 
+          name: BetterCrewLink Unpacked 32bit
           path: 'dist/win-ia32-unpacked'
