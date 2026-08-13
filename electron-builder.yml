@@ -21,6 +21,11 @@ win:
     - provider: github
       owner: simonpi3002-alt
       repo: bettercrewlink-hidden-fork
+      # electron-builder's GitHub provider defaults releaseType to "draft",
+      # which GitHub's /releases/latest API (what VoiceForkInstaller polls)
+      # excludes entirely -- the Launcher would never see a new version.
+      # "release" publishes it immediately so installs/updates are unattended.
+      releaseType: release
 linux:
   target:
     - "AppImage"
@@ -28,3 +33,4 @@ linux:
     - provider: github
       owner: simonpi3002-alt
       repo: bettercrewlink-hidden-fork
+      releaseType: release
