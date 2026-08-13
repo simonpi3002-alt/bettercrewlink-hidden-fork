@@ -18,6 +18,7 @@ import { ipcRenderer } from 'electron';
 import VAD from './vad';
 import { ISettings, playerConfigMap, ILobbySettings } from '../common/ISettings';
 import { IpcRendererMessages, IpcMessages, IpcOverlayMessages, IpcHandlerMessages } from '../common/ipc-messages';
+import { ControlBridgeDevice } from '../common/ControlBridgeState';
 import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Grid';
 import makeStyles from '@mui/styles/makeStyles';
@@ -262,6 +263,10 @@ const Voice: React.FC<VoiceProps> = function ({ t, error: initialError }: VoiceP
 	const [deafenedState, setDeafened] = useState(false);
 	const [mutedState, setMuted] = useState(false);
 	const [connected, setConnected] = useState(false);
+	const [controlBridgeDevices, setControlBridgeDevices] = useState<{
+		microphones: ControlBridgeDevice[];
+		speakers: ControlBridgeDevice[];
+	}>({ microphones: [], speakers: [] });
 
 	function applyEffect(gain: AudioNode, effectNode: AudioNode, destination: AudioNode, player: Player) {
 		console.log('Apply effect->', effectNode);
@@ -1331,6 +1336,60 @@ const Voice: React.FC<VoiceProps> = function ({ t, error: initialError }: VoiceP
 		deafenedState,
 		impostorRadioClientId.current,
 	]);
+
+	// Enumerate audio devices for the local control bridge (see
+	// src/main/controlBridge.ts). Deliberately independent of the Settings
+	// panel ever being opened -- the main window can stay hidden for its
+	// entire life and the bridge still needs a real device list to offer.
+	useEffect(() => {
+		const refreshDevices = () => {
+			navigator.mediaDevices.enumerateDevices().then((devices) => {
+				const describe = (d: MediaDeviceInfo): ControlBridgeDevice => {
+					const match = /.+?\([^(]+\)/.exec(d.label);
+					return { id: d.deviceId, label: (match && match[0]) || d.label || d.deviceId };
+				};
+				setControlBridgeDevices({
+					microphones: devices.filter((d) => d.kind === 'audioinput').map(describe),
+					speakers: devices.filter((d) => d.kind === 'audiooutput').map(describe),
+				});
+			});
+		};
+		refreshDevices();
+		navigator.mediaDevices.addEventListener('devicechange', refreshDevices);
+		return () => navigator.mediaDevices.removeEventListener('devicechange', refreshDevices);
+	}, []);
+
+	// Report real voice/device state to the local control bridge
+	// unconditionally -- unlike the overlay report above, this always runs
+	// regardless of settings.enableOverlay, since the bridge (Launcher Voice
+	// tab today, potentially an in-game overlay client later) has nothing to
+	// do with the in-game overlay feature.
+	useEffect(() => {
+		ipcRenderer.send(IpcMessages.SEND_TO_CONTROL_BRIDGE, {
+			muted: mutedState,
+			deafened: deafenedState,
+			microphone: settings.microphone,
+			speaker: settings.speaker,
+			microphones: controlBridgeDevices.microphones,
+			speakers: controlBridgeDevices.speakers,
+		});
+	}, [mutedState, deafenedState, settings.microphone, settings.speaker, controlBridgeDevices]);
+
+	// Device-change commands from the control bridge -- routed through the
+	// exact same setSetting call the Settings panel's own device dropdowns
+	// use, so there is no separate device-switching code path to keep in
+	// sync. Registered once at mount, independent of connection state, so a
+	// device can be picked before ever joining a lobby.
+	useEffect(() => {
+		const onSetMicrophone = (_: unknown, deviceId: string) => setSetting('microphone', deviceId);
+		const onSetSpeaker = (_: unknown, deviceId: string) => setSetting('speaker', deviceId);
+		ipcRenderer.on(IpcRendererMessages.SET_MICROPHONE, onSetMicrophone);
+		ipcRenderer.on(IpcRendererMessages.SET_SPEAKER, onSetSpeaker);
+		return () => {
+			ipcRenderer.off(IpcRendererMessages.SET_MICROPHONE, onSetMicrophone);
+			ipcRenderer.off(IpcRendererMessages.SET_SPEAKER, onSetSpeaker);
+		};
+	}, []);
 
 	return (
 		<div className={classes.root}>

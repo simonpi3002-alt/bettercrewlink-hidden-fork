@@ -11,6 +11,12 @@ export enum IpcMessages {
 	SEND_TO_MAINWINDOW = 'SEND_TO_MAINWINDOW',
 	RESTART_AND_UPDATE = 'RESTART_AND_UPDATE',
 	REQUEST_MOD = 'REQUEST_MOD',
+	// Unconditional voice/device state report for the local control bridge
+	// (src/main/controlBridge.ts) -- separate from SEND_TO_OVERLAY's
+	// NOTIFY_VOICE_STATE_CHANGED, which only fires when settings.enableOverlay
+	// is on. The bridge needs real state whether or not the overlay feature
+	// (unrelated, unbuilt here) is ever used.
+	SEND_TO_CONTROL_BRIDGE = 'SEND_TO_CONTROL_BRIDGE',
 }
 
 // Renderer --> Main (sendSync/on)
@@ -41,6 +47,12 @@ export enum IpcRendererMessages {
 	NOTIFY_GAME_STATE_CHANGED = 'NOTIFY_GAME_STATE_CHANGED',
 	TOGGLE_DEAFEN = 'TOGGLE_DEAFEN',
 	TOGGLE_MUTE = 'TOGGLE_MUTE',
+	// Control-bridge device-change commands, sent the same way a keyboard
+	// shortcut sends TOGGLE_MUTE/TOGGLE_DEAFEN above -- main forwards a
+	// bridge command straight to the real renderer setting, no parallel
+	// device-switching code path.
+	SET_MICROPHONE = 'SET_MICROPHONE',
+	SET_SPEAKER = 'SET_SPEAKER',
 	PUSH_TO_TALK = 'PUSH_TO_TALK',
 	IMPOSTOR_RADIO = 'IMPOSTOR_RADIO',
 	ERROR = 'ERROR',
