@@ -14,8 +14,27 @@
 // renderer (src/renderer/Voice.tsx, via IpcMessages.SEND_TO_CONTROL_BRIDGE)
 // and broadcast to every connected bridge client. Broadcasting to
 // `server.clients` rather than a single socket means a second simultaneous
-// client (e.g. a future in-game overlay) can connect and receive the same
-// state without any protocol change.
+// client can connect and receive the same state without any protocol
+// change -- exercised for real as of Phase 13B, which added the in-game
+// CoreMod overlay as a second bridge client alongside the Launcher Voice
+// tab from Phase 13.
+//
+// MULTI-CLIENT ARBITRATION RULE (Phase 13B): last-write-wins with broadcast
+// reconciliation, enforced by construction, not by anything in this file
+// picking a "winner." Every command (from either client) mutates exactly
+// one shared piece of state living in Voice.tsx -- there is no per-client
+// copy anywhere to go out of sync. Whichever command Node's single-threaded
+// event loop processes last is authoritative; the resulting real state then
+// broadcasts to every connected client (including whichever one "lost" a
+// near-simultaneous race), so every client's display converges to the same
+// truth within one broadcast, every time. This requires bridge CLIENTS to
+// hold up their end: a client must render only from the last state
+// broadcast it received, never from its own optimistic guess about what a
+// command it just sent will do -- both VoiceBridgeClient (Launcher) and
+// OverlayBridgeClient (CoreMod) are written this way. No sequence numbers
+// or command IDs are needed for correctness: each client holds exactly one
+// ordered WebSocket connection, so reordering across a single connection
+// isn't a real risk here.
 //
 // Plain CommonJS require (not an ES/TS import) deliberately: electron-webpack
 // marks node_modules as externals for the main-process bundle, and this

@@ -18,7 +18,7 @@ import { ipcRenderer } from 'electron';
 import VAD from './vad';
 import { ISettings, playerConfigMap, ILobbySettings } from '../common/ISettings';
 import { IpcRendererMessages, IpcMessages, IpcOverlayMessages, IpcHandlerMessages } from '../common/ipc-messages';
-import { ControlBridgeDevice } from '../common/ControlBridgeState';
+import { ControlBridgeDevice, ControlBridgeVoiceState } from '../common/ControlBridgeState';
 import Typography from '@mui/material/Typography';
 import Grid from '@mui/material/Grid';
 import makeStyles from '@mui/styles/makeStyles';
@@ -1372,8 +1372,18 @@ const Voice: React.FC<VoiceProps> = function ({ t, error: initialError }: VoiceP
 			speaker: settings.speaker,
 			microphones: controlBridgeDevices.microphones,
 			speakers: controlBridgeDevices.speakers,
-		});
-	}, [mutedState, deafenedState, settings.microphone, settings.speaker, controlBridgeDevices]);
+			talking,
+			otherTalking,
+		} as ControlBridgeVoiceState);
+	}, [
+		mutedState,
+		deafenedState,
+		settings.microphone,
+		settings.speaker,
+		controlBridgeDevices,
+		talking,
+		otherTalking,
+	]);
 
 	// Device-change commands from the control bridge -- routed through the
 	// exact same setSetting call the Settings panel's own device dropdowns

@@ -17,4 +17,11 @@ export interface ControlBridgeVoiceState {
 	speaker: string;
 	microphones: ControlBridgeDevice[];
 	speakers: ControlBridgeDevice[];
+	// Keyed by Among Us's own numeric clientId (same identity CoreMod's
+	// PlayerControl.OwnerId uses) -- lets a game-side client (the Phase 13B
+	// overlay) show a per-player speaking indicator without CoreMod having
+	// to know anything about socket IDs or WebRTC peers. Mirrors Voice.tsx's
+	// own otherTalking/talking React state 1:1, just relayed.
+	talking: boolean;
+	otherTalking: Record<number, boolean>;
 }
