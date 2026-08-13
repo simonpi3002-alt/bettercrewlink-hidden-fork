@@ -109,15 +109,29 @@ jobs:
         # security restriction on its bundled Node), but nothing in this
         # step or the next one actually launches the Electron app itself,
         # only tooling that builds it.
+        #
+        # npm_config_openssl_fips="" is required for memoryjs (0.0.6, a 2019
+        # native module) to build at all: its binding.gyp evaluates
+        # `openssl_fips != ""`, a variable current node-gyp/gyp no longer
+        # auto-defines from Electron's headers ("name 'openssl_fips' is not
+        # defined" while loading binding.gyp). node-gyp forwards npm_config_*
+        # env vars straight through as gyp -D variables, so setting it here
+        # (empty, matching what older toolchains defaulted it to) satisfies
+        # the condition without touching memoryjs's own vendored source.
         shell: pwsh
         run: yarn install --cache-folder .yarn --network-timeout 100000
         env:
           NODE_OPTIONS: --openssl-legacy-provider ${{ env.NODE_OPTIONS_MAXBUFFER_SHIM }}
+          npm_config_openssl_fips: ''
 
       - name: Build App
         run: yarn run publish
         env:
           NODE_OPTIONS: --openssl-legacy-provider ${{ env.NODE_OPTIONS_MAXBUFFER_SHIM }}
+          # electron-builder rebuilds native modules again for the packaged
+          # app's exact Electron ABI -- same openssl_fips gyp issue as the
+          # Install Dependencies step above, so it's needed here too.
+          npm_config_openssl_fips: ''
           # The repo-scoped, ephemeral token GitHub Actions provides
           # automatically -- no manually-created/stored PAT needed. Requires
           # the contents: write permission granted above.
