@@ -41,7 +41,13 @@ jobs:
         shell: pwsh
         run: |
           npm install -g node-gyp@latest
-          $nodeGyp = (Get-Command node-gyp).Source
+          # npm_config_node_gyp must point at the actual JS entry point --
+          # `Get-Command node-gyp`'s .Source resolves to the PowerShell (.ps1)
+          # shim on this runner, which node-gyp's callers invoke directly via
+          # `node <path>`, not via pwsh, and fail with a syntax error trying
+          # to parse PowerShell as JavaScript.
+          $globalRoot = (npm root -g)
+          $nodeGyp = Join-Path $globalRoot 'node-gyp\bin\node-gyp.js'
           echo "npm_config_node_gyp=$nodeGyp" >> $env:GITHUB_ENV
 
       - name: Install Dependencies
