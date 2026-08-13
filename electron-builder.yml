@@ -11,6 +11,12 @@ files:
       - app
 
 win:
+  # zip alongside the default NSIS installer: the Simon's Among Us Launcher
+  # installs this the same atomic way it installs Core -- download, verify,
+  # extract files -- rather than executing a downloaded installer binary.
+  target:
+    - nsis
+    - zip
   publish:
     - provider: github
       owner: simonpi3002-alt

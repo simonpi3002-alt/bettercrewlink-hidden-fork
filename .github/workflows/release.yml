@@ -29,6 +29,21 @@ jobs:
         with:
           node-version: 16.14.2
 
+      - name: Update node-gyp for the runner's Visual Studio version
+        # node-gyp 8.4.1 (bundled with Node 16's npm) doesn't recognize this
+        # runner's installed Visual Studio version and fails every native
+        # module build with "could not find a version of Visual Studio 2017
+        # or newer to use" even though a working toolchain is present. A
+        # current node-gyp does recognize it. Point npm/yarn's native builds
+        # at the newly installed one explicitly rather than relying on PATH
+        # order, since the old one bundled with npm would otherwise still be
+        # found first.
+        shell: pwsh
+        run: |
+          npm install -g node-gyp@latest
+          $nodeGyp = (Get-Command node-gyp).Source
+          echo "npm_config_node_gyp=$nodeGyp" >> $env:GITHUB_ENV
+
       - name: Install Dependencies
         run: yarn install --cache-folder .yarn --network-timeout 100000
 
