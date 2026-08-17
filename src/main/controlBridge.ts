@@ -61,6 +61,24 @@ interface BridgeCommand {
 let server: any = null;
 let lastKnownState: ControlBridgeVoiceState | null = null;
 let ipcListenerRegistered = false;
+let connectedClientCount = 0;
+
+// Real find, 2026-08-17: no 'error' listener was ever attached to an
+// individual client socket below. Node's EventEmitter throws a socket's
+// 'error' event as an uncaught exception (crashing the ENTIRE process,
+// historically Node's documented default for an EventEmitter 'error' with
+// no listener) if nothing is listening for it -- a single TCP-level hiccup
+// on ANY connected client's loopback socket (either of Simon's Among Us's
+// two bridge clients: the Launcher's VoiceBridgeClient or CoreMod's
+// OverlayBridgeClient) could have silently killed this entire hidden,
+// show:false Electron process. That would explain the live-tested symptom
+// exactly: minutes-long or permanently unreachable reconnect attempts (the
+// whole process, not just the listener, is gone) and the workaround that
+// actually fixed it every time (killing and restarting BetterCrewLink --
+// there is no other way to recover from a crashed process). The two fixes
+// below (this explicit per-socket handler, and index.ts's new global
+// process.on('uncaughtException') safety net) both independently prevent
+// this exact crash from now on.
 
 function sendState(state: ControlBridgeVoiceState): void {
 	lastKnownState = state;
@@ -139,7 +157,8 @@ export function startControlBridge(): void {
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	server.on('connection', (socket: any) => {
-		console.log('[control-bridge] client connected');
+		connectedClientCount += 1;
+		console.log(`[control-bridge] client connected (now ${connectedClientCount} connected)`);
 
 		// A freshly-connected client (Launcher or a future overlay) shouldn't
 		// have to wait for the next state change to see where things stand.
@@ -166,10 +185,21 @@ export function startControlBridge(): void {
 			handleCommand(socket, parsed);
 		});
 
-		socket.on('close', () => console.log('[control-bridge] client disconnected'));
+		socket.on('close', () => {
+			connectedClientCount = Math.max(0, connectedClientCount - 1);
+			console.log(`[control-bridge] client disconnected (now ${connectedClientCount} connected)`);
+		});
+		// No handler existed for this before -- an unhandled 'error' event on
+		// an EventEmitter is fatal in Node (throws, can crash the whole
+		// process) if nothing is listening for it. A single misbehaving
+		// client socket taking down every other connected client's bridge
+		// would be exactly the kind of silent, hard-to-diagnose failure this
+		// logging pass exists to close.
+		socket.on('error', (err: Error) =>
+			console.error('[control-bridge] client socket error (connection kept, others unaffected):', err.message));
 	});
 
-	server.on('error', (err: Error) => console.log('[control-bridge] server error:', err.message));
+	server.on('error', (err: Error) => console.error('[control-bridge] server error:', err.message));
 }
 
 export function stopControlBridge(): void {

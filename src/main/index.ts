@@ -17,6 +17,42 @@ import installExtension, { REACT_DEVELOPER_TOOLS } from 'electron-devtools-insta
 import { gameReader } from './hook';
 import { GenerateHat } from './avatarGenerator';
 import { startControlBridge } from './controlBridge';
+import log from 'electron-log';
+
+// Simon's Among Us: this app is show:false by design (see createMainWindow
+// below), so console.log/console.error calls throughout this process --
+// including controlBridge.ts's own bridge lifecycle logging -- previously
+// went nowhere a human could ever read. Confirmed live, 2026-08-17: a real
+// tester's voice bridge got stuck unreachable for minutes with zero
+// evidence of what this process was actually doing during that time,
+// because there was no log file at all. electron-log was already an
+// installed dependency (used nowhere) -- Object.assign(console, log.functions)
+// is its own documented pattern for making every EXISTING console.* call
+// in this codebase also write to a real file, with no need to touch each
+// call site individually. Default location on Windows:
+// %USERPROFILE%\AppData\Roaming\BetterCrewLink\logs\main.log -- automatic
+// rotation/archiving is electron-log's own default behavior, not configured
+// here.
+log.transports.file.level = 'info';
+log.transports.console.level = 'info';
+Object.assign(console, log.functions);
+console.log(`Logging to file: ${log.transports.file.getFile().path}`);
+
+// No global error handler existed anywhere in this process before this --
+// an uncaught exception or unhandled Promise rejection in the main process
+// (this hidden, show:false app has no visible console to notice one in)
+// could otherwise fail silently, with no evidence it ever happened. Log and
+// keep running rather than exit: this app already fails open by design
+// elsewhere (see controlBridge.ts's own doc comment), and a main-process
+// exit would take the live voice connection down for everyone in the mesh,
+// a worse outcome than a degraded feature staying degraded.
+process.on('uncaughtException', (error) => {
+	console.error('[main] uncaught exception (process kept running):', error);
+});
+process.on('unhandledRejection', (reason) => {
+	console.error('[main] unhandled promise rejection (process kept running):', reason);
+});
+
 const args = require('minimist')(process.argv); // eslint-disable-line
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const devTools = (isDevelopment || args.dev === 1) && true;
