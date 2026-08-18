@@ -792,6 +792,24 @@ const Voice: React.FC<VoiceProps> = function ({ t, error: initialError }: VoiceP
 
 		socket.on('disconnect', () => {
 			setConnected(false);
+			// Real find, 2026-08-18 live 4-player test: a transient socket.io
+			// disconnect (e.g. the relay briefly dropping a peer while it
+			// recovers from a crash elsewhere) used to leave every existing
+			// simple-peer connection and its audio element/AudioContext
+			// dangling -- socket.io's own auto-reconnect fires the `connect`
+			// listener again and connect() rejoins, but only ever creates
+			// NEW peer connections for the new socket id; the stale ones from
+			// before this disconnect were never destroyed. That's a real
+			// resource leak, and plausibly why players other than the one who
+			// actually crashed still couldn't hear them after their restart --
+			// their OWN client never tore down its half of the stale
+			// connection, so restarting their own voice session was the only
+			// thing that forced a full, clean rejoin. Mirrors the exact
+			// cleanup connect() already does for an explicit MENU transition.
+			Object.keys(peerConnections).forEach((k) => {
+				disconnectPeer(k);
+			});
+			setSocketClients({});
 			currentLobby = 'MENU';
 			console.log('DISCONNECTED??');
 		});
