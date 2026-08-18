@@ -47,8 +47,16 @@ const WS = require('ws');
 import { ipcMain } from 'electron';
 import { IpcMessages, IpcRendererMessages } from '../common/ipc-messages';
 import { ControlBridgeVoiceState } from '../common/ControlBridgeState';
+import { bindWsServerWithRetry, BoundedBindHandle } from './wsServerBind';
 
 export const CONTROL_BRIDGE_PORT = 45397;
+
+// Bounded so a permanently-occupied port (another process squatting on
+// 45397) can't spin this forever -- five attempts with capped exponential
+// backoff tops out under ~16s total before giving up and logging clearly.
+const MAX_BIND_ATTEMPTS = 5;
+const BASE_RETRY_DELAY_MS = 500;
+const MAX_RETRY_DELAY_MS = 8000;
 
 interface BridgeCommand {
 	command: string;
@@ -62,6 +70,7 @@ let server: any = null;
 let lastKnownState: ControlBridgeVoiceState | null = null;
 let ipcListenerRegistered = false;
 let connectedClientCount = 0;
+let activeBind: BoundedBindHandle | null = null;
 
 // Real find, 2026-08-17: no 'error' listener was ever attached to an
 // individual client socket below. Node's EventEmitter throws a socket's
@@ -129,12 +138,14 @@ function handleCommand(socket: any, parsed: BridgeCommand): void {
 	// and gives the caller a round-trip timestamp -- the renderer's own
 	// SEND_TO_CONTROL_BRIDGE report (not this ack) is the source of truth
 	// for whether the command actually changed anything.
-	socket.send(JSON.stringify({
-		type: 'ack',
-		command: parsed.command,
-		requestId: parsed.requestId,
-		receivedAtMs: Date.now()
-	}));
+	socket.send(
+		JSON.stringify({
+			type: 'ack',
+			command: parsed.command,
+			requestId: parsed.requestId,
+			receivedAtMs: Date.now(),
+		})
+	);
 }
 
 export function startControlBridge(): void {
@@ -145,18 +156,55 @@ export function startControlBridge(): void {
 		});
 	}
 
-	if (server) {
+	// Already bound, or a bind attempt (possibly mid-retry-backoff) is
+	// already in flight -- either way, don't start a second concurrent bind
+	// that could end up with two WS servers racing for the same port.
+	if (server || activeBind) {
 		return;
 	}
 
 	// Loopback-only: explicit host binding, never 0.0.0.0 -- per
 	// BETTERCREWLINK_LICENSING_AND_PRIVACY.md's security requirement for
 	// any local control surface this architecture introduces.
-	server = new WS.Server({ host: '127.0.0.1', port: CONTROL_BRIDGE_PORT });
-	console.log(`[control-bridge] listening on ws://127.0.0.1:${CONTROL_BRIDGE_PORT}`);
+	activeBind = bindWsServerWithRetry({
+		host: '127.0.0.1',
+		port: CONTROL_BRIDGE_PORT,
+		maxAttempts: MAX_BIND_ATTEMPTS,
+		baseDelayMs: BASE_RETRY_DELAY_MS,
+		maxDelayMs: MAX_RETRY_DELAY_MS,
+		onAttempt: (attempt, maxAttempts) =>
+			console.log(`[control-bridge] bind attempt ${attempt}/${maxAttempts} on ws://127.0.0.1:${CONTROL_BRIDGE_PORT}`),
+		onRetryScheduled: (attempt, maxAttempts, delayMs, err) =>
+			console.warn(
+				`[control-bridge] bind attempt ${attempt}/${maxAttempts} failed (${err.message}), retrying in ${delayMs}ms`
+			),
+		onGaveUp: (maxAttempts, err) =>
+			console.error(
+				`[control-bridge] failed to bind ws://127.0.0.1:${CONTROL_BRIDGE_PORT} after ${maxAttempts} attempts, giving up (last error: ${err.message}). BetterCrewLink stays alive; call startControlBridge() again later to retry.`
+			),
+	});
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	server.on('connection', (socket: any) => {
+	activeBind.promise.then((instance: any) => {
+		activeBind = null;
+		if (!instance) {
+			// Every bounded attempt failed (or a stop/cancel raced us). Leave
+			// `server` null -- this is the fix for the original bug, where
+			// `server` was assigned before bind success was known and a
+			// failed bind left it permanently non-null, silently no-op'ing
+			// every future startControlBridge() call.
+			return;
+		}
+		server = instance;
+		console.log(`[control-bridge] listening on ws://127.0.0.1:${CONTROL_BRIDGE_PORT}`);
+		attachServerHandlers(instance);
+	});
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function attachServerHandlers(instance: any): void {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	instance.on('connection', (socket: any) => {
 		connectedClientCount += 1;
 		console.log(`[control-bridge] client connected (now ${connectedClientCount} connected)`);
 
@@ -196,13 +244,28 @@ export function startControlBridge(): void {
 		// would be exactly the kind of silent, hard-to-diagnose failure this
 		// logging pass exists to close.
 		socket.on('error', (err: Error) =>
-			console.error('[control-bridge] client socket error (connection kept, others unaffected):', err.message));
+			console.error('[control-bridge] client socket error (connection kept, others unaffected):', err.message)
+		);
 	});
 
-	server.on('error', (err: Error) => console.error('[control-bridge] server error:', err.message));
+	instance.on('error', (err: Error) => {
+		// A fatal error on an already-bound server (e.g. the underlying
+		// handle dying post-bind) -- log clearly and drop the reference so a
+		// future startControlBridge() call can attempt a fresh bind instead
+		// of being permanently blocked by a dead-but-still-referenced server,
+		// the same class of bug this whole fix addresses.
+		console.error('[control-bridge] server error after bind (bridge unavailable until next start):', err.message);
+		if (server === instance) {
+			server = null;
+		}
+	});
 }
 
 export function stopControlBridge(): void {
+	if (activeBind) {
+		activeBind.cancel();
+		activeBind = null;
+	}
 	server?.close();
 	server = null;
 	lastKnownState = null;
