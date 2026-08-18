@@ -82,6 +82,21 @@ export default class GameReader {
 	gamePath = '';
 	oldMeetingHud = false;
 	playercolors: string[][] = [];
+	// Real find, 2026-08-18 live 4-player test: every player's avatar showed
+	// a red error/exclamation icon at the end of the match even though voice
+	// audio kept working fine, self-resolving the moment a new lobby formed.
+	// Root cause -- parsePlayer() below sets `bugged` from a SINGLE read the
+	// instant position/color/disconnected looks invalid, and the EndGame ->
+	// Lobby scene transition briefly produces exactly that (game objects
+	// tearing down/reinitializing) for one or two poll ticks even for a
+	// perfectly fine player. loop() polls at 5Hz (hook.ts's `1000 / 5`), so
+	// this tracks a per-player consecutive-invalid-read streak and only
+	// reports `bugged: true` once it persists past a real transition --
+	// cleared instantly on the very next valid read either way, so a
+	// genuinely stuck/glitched player slot is still flagged within ~600ms,
+	// just not on a single expected blip.
+	private buggedStreak = new Map<number, number>();
+	private static readonly BuggedStreakThreshold = 3;
 
 	constructor(sendIPC: Electron.WebContents['send']) {
 		this.is_linux = platform() === 'linux';
@@ -1118,7 +1133,11 @@ export default class GameReader {
 		if (x === undefined || y === undefined || data.disconnected != 0 || data.color < 0 || data.color > this.playercolors.length) {
 			x = 9999;
 			y = 9999;
-			bugged = true;
+			const streak = (this.buggedStreak.get(ptr) ?? 0) + 1;
+			this.buggedStreak.set(ptr, streak);
+			bugged = streak >= GameReader.BuggedStreakThreshold;
+		} else {
+			this.buggedStreak.delete(ptr);
 		}
 
 		const x_round = parseFloat(x?.toFixed(4));
