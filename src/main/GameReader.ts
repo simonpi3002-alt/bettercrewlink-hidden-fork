@@ -97,23 +97,48 @@ export default class GameReader {
 	// just not on a single expected blip.
 	private buggedStreak = new Map<number, number>();
 	private static readonly BuggedStreakThreshold = 3;
+	private readonly requestedGamePath: string;
+	private readonly ignoredGameProcessIds = new Set<number>();
 
-	constructor(sendIPC: Electron.WebContents['send']) {
+	constructor(sendIPC: Electron.WebContents['send'], requestedGamePath = '') {
 		this.is_linux = platform() === 'linux';
 		this.sendIPC = sendIPC;
+		this.requestedGamePath = this.normalizeGamePath(requestedGamePath);
+	}
+
+	private normalizeGamePath(filePath: string): string {
+		if (!filePath) return '';
+		const normalized = path.resolve(filePath);
+		return platform() === 'win32' ? normalized.toLowerCase() : normalized;
+	}
+
+	private matchesRequestedGamePath(filePath: string): boolean {
+		return !this.requestedGamePath || this.normalizeGamePath(filePath) === this.requestedGamePath;
 	}
 
 	async checkProcessOpen(): Promise<void> {
 		const processesOpen = getProcesses().filter((p) => p.szExeFile === 'Among Us.exe');
+		const liveProcessIds = new Set(processesOpen.map((p) => p.th32ProcessID));
+		for (const ignoredPid of Array.from(this.ignoredGameProcessIds)) {
+			if (!liveProcessIds.has(ignoredPid)) this.ignoredGameProcessIds.delete(ignoredPid);
+		}
 		let error = '';
 		const reset = this.amongUs && processesOpen.filter((o) => o.th32ProcessID === this.pid).length === 0;
 		if ((!this.amongUs || reset) && processesOpen.length > 0) {
 			for (const processOpen of processesOpen) {
+				if (this.requestedGamePath && this.ignoredGameProcessIds.has(processOpen.th32ProcessID)) continue;
 				try {
+					const candidate = openProcess(processOpen.th32ProcessID);
+					const candidatePath = getProcessPath(candidate.handle);
+					if (!this.matchesRequestedGamePath(candidatePath)) {
+						this.ignoredGameProcessIds.add(processOpen.th32ProcessID);
+						console.log('[game-path] Ignoring Among Us process outside requested path:', candidatePath);
+						continue;
+					}
 					this.pid = processOpen.th32ProcessID;
-					this.amongUs = openProcess(processOpen.th32ProcessID);
+					this.amongUs = candidate;
 					this.gameAssembly = findModule('GameAssembly.dll', this.amongUs.th32ProcessID);
-					this.gamePath = getProcessPath(this.amongUs.handle);
+					this.gamePath = candidatePath;
 					this.loadedMod = this.getInstalledMods(this.gamePath);
 					await this.initializeoffsets();
 					this.sendIPC(IpcRendererMessages.NOTIFY_GAME_OPENED, true);

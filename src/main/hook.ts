@@ -6,6 +6,9 @@ import { ISettings } from '../common/ISettings';
 import { IpcHandlerMessages, IpcMessages, IpcRendererMessages, IpcSyncMessages } from '../common/ipc-messages';
 
 const store = new Store<ISettings>();
+const launchArgs = require('minimist')(process.argv); // eslint-disable-line
+const requestedGamePath = typeof launchArgs['game-path'] === 'string' ? launchArgs['game-path'] : '';
+if (requestedGamePath) console.log('[game-path] Requested Among Us executable:', requestedGamePath);
 
 const currentPlayerConfigMap = store.get('playerConfigMap', {});
 const playerConfigMapLength = Object.keys(currentPlayerConfigMap).length;
@@ -110,7 +113,7 @@ ipcMain.handle(IpcHandlerMessages.START_HOOK, async (event) => {
 		keyboardWatcher.start();
 
 		// Read game memory
-		gameReader = new GameReader(event.sender.send.bind(event.sender));
+		gameReader = new GameReader(event.sender.send.bind(event.sender), requestedGamePath);
 		let gotError = false;
 		const frame = async () => {
 			const err = await gameReader.loop();

@@ -852,11 +852,18 @@ const Voice: React.FC<VoiceProps> = function ({ t, error: initialError }: VoiceP
 			}));
 		});
 
+		const rememberSocketClient = (socketId: string, client: Client) => {
+			const next = { ...socketClientsRef.current, [socketId]: client };
+			socketClientsRef.current = next;
+			setSocketClients(next);
+		};
+
 		socket.on('setClient', (socketId: string, client: Client) => {
-			setSocketClients((old) => ({ ...old, [socketId]: client }));
+			rememberSocketClient(socketId, client);
 		});
 
 		socket.on('setClients', (clients: SocketClientMap) => {
+			socketClientsRef.current = clients;
 			setSocketClients(clients);
 		});
 
@@ -1115,8 +1122,8 @@ const Voice: React.FC<VoiceProps> = function ({ t, error: initialError }: VoiceP
 			}
 
 			socket.on('join', async (peer: string, client: Client) => {
+				rememberSocketClient(peer, client);
 				createPeerConnection(peer, true, client);
-				setSocketClients((old) => ({ ...old, [peer]: client }));
 			});
 
 			socket.on('signal', ({ data, from, client }: { data: Peer.SignalData; from: string, client: Client }) => {
@@ -1134,8 +1141,15 @@ const Voice: React.FC<VoiceProps> = function ({ t, error: initialError }: VoiceP
 				}
 				let connection: Peer.Instance;
 				if (!socketClientsRef.current[from]) {
-					console.warn('SIGNAL FROM UNKOWN SOCKET..');
-					return;
+					// A signal can beat React's roster state update during a late join.
+					// The server already supplied the authoritative Client on this event,
+					// so reconcile the roster immediately instead of dropping the offer.
+					if (!client) {
+						console.warn('SIGNAL FROM UNKNOWN SOCKET WITHOUT CLIENT METADATA:', from);
+						return;
+					}
+					console.warn('SIGNAL ARRIVED BEFORE ROSTER UPDATE; reconciling peer:', from);
+					rememberSocketClient(from, client);
 				}
 				if (data.hasOwnProperty('type')) {
 					if (peerConnections[from] && data.type !== 'offer') {
